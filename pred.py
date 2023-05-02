@@ -129,16 +129,16 @@ def comparison():
 
   
 
-     # Convert each string value to a unique integer value
+     # Converting each string value to a unique integer value
     le = LabelEncoder()
     for i in range(len(compiled_against)):
         for j in range(len(compiled_against[i])):
             compiled_against[i][j] = le.fit_transform([compiled_against[i][j]])[0]
 
-    # Convert comp_ to a numpy array
+    # Converting comp_ to a numpy array
     compiled_against = np.array(compiled_against)
 
-    # Make predictions using the trained model
+    # Making predictions using the trained model
     predictions = rfc.predict(comp_)
     print(predictions)
 
