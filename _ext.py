@@ -122,7 +122,7 @@ def models():
     for_team, against_team, any_win, data = teams()
 
     data = []  
-    # Add the data for each team to the list
+    # Adding the data for each team to the list
     for url in urls:
         response = requests.get(url)
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -195,7 +195,7 @@ def models():
 def train_model():
     try:
         X_train, X_test, y_train, y_test, le = models()
-        # Initialize the model
+        # Initializing the model
         rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
 
         # Fitting the model to the training data
@@ -221,7 +221,7 @@ def train_model():
 # ----------------------------------------------------------------------
 
 def prediction():
-    # Train the model
+    # Training the model
     X_train, X_test, y_train, y_test, le = models()
     rf_model = train_model()
     # Getting feature importances
