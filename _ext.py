@@ -22,14 +22,17 @@ urls = [
     'https://www.skysports.com/serie-a-table',
     'https://www.skysports.com/ligue-1-table',
     'https://www.skysports.com/eredivisie-table',
-    'https://www.skysports.com/national-league-table'
+    'https://www.skysports.com/national-league-table',
+    'https://www.skysports.com/national-league-north-table',
+    'https://www.skysports.com/national-league-south-table'
 ]
 
-def teams(urls):
+def teams():
     for_team = []
     against_team = []
     any_win = []
     v = []
+    data = []
     for url in urls:
         response = requests.get(url)
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -40,9 +43,6 @@ def teams(urls):
             league_name = table.find('caption').text.strip()
             # Extracting the table rows from the body
             rows = table.find('tbody').find_all('tr')
-            wins = 0
-            draws = 0
-            losses = 0
             last_five_results = []
             for row in rows:
                 # Extracting the team name and their statistics
@@ -56,6 +56,7 @@ def teams(urls):
                 gd = int(row.find_all('td')[8].text.strip())
                 points = int(row.find_all('td')[9].text.strip())
                 td = row.find('td', class_='standing-table__cell is-hidden--bp15 is-hidden--bp35')
+             
                 if td:
                     form = td.find('div', class_='standing-table__form')
                     if form:
@@ -66,7 +67,8 @@ def teams(urls):
                         team_match = ''
                         opp_match = ''
                         # Converting the last five results into a win-draw-loss record
-                        last_five_record = []
+                        last_five_records = []
+                        last_five_record = [0, 0, 0]  # Wins, Draws, Losses
                         for result in last_five_results:
                             if name in result:
                                 goals = result.split('-')
@@ -78,15 +80,23 @@ def teams(urls):
                                         team_match = int(goals[1][0].strip())
                                         opp_match = int(goals[0][-1].strip())
                                     if team_match > opp_match:
-                                        last_five_record.append('W')
+                                        last_five_records.append('W')
+                                        last_five_record[0] += 1  # Wins
                                     elif team_match == opp_match:
-                                        last_five_record.append('D')
+                                        last_five_records.append('D')
+                                        last_five_record[1] += 1  # Draws
                                     else:
-                                        last_five_record.append('L')
+                                        last_five_records.append('L')
+                                        last_five_record[2] += 1  # Losses
+                        
                         # Joining the last five records into a string
-                        last_five_record_str = '-'.join(last_five_record)
+                        last_five_record_str = '-'.join(last_five_records)
                     # Checking if the team has less than 6 losses or more than 17 losses
+                    team_form = last_five_record[0] - last_five_record[2]
                     if played > 20:
+                        data.append([name, played, won, drawn, lost, gf, ga, gd, points,
+                                 last_five_record[0], last_five_record[1], last_five_record[2], team_form,
+                                 ])
                         if lost < 6:
                             for_team.append(name)
                             # Adding the last five records as features for the team
@@ -104,12 +114,12 @@ def teams(urls):
                 else:
                     print("League is still young")
 
-    return for_team, against_team, any_win
+    return for_team, against_team, any_win, data
 
 # ---------------------------------------------------------------------------------------
 
 def models():
-    for_team, against_team, any_win = teams(urls)
+    for_team, against_team, any_win, data = teams()
 
     data = []  
     # Add the data for each team to the list
@@ -249,16 +259,14 @@ def prediction():
     # Printing the teams that can potentially win any match
     any_win = team_predictions[le.transform(team_predictions["Prediction"]) == 2]["Team"].values
 
-    with open('selections.txt', 'w') as f:
-        f.write('Teams to be considered as favorites:\n')
+    with open('for_selections.txt', 'w') as f:
         for team in for_team:
             f.write(team + '\n')
-        f.write('\nTeams in very poor form:\n')
+    with open('against_selections.txt', 'w') as f:
         for team in against_team:
             f.write(team + '\n')
-        f.write('\nTeams with low possibility of draw:\n')
+    with open('any_selections.txt', 'w') as f:
         for team in any_win:
             f.write(team + '\n')
 
-
-print(prediction())
+    return for_team, against_team, any_win
