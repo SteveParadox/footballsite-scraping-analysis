@@ -1,72 +1,63 @@
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 import requests
-from sklearn.ensemble import RandomForestClassifier
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from sklearn.preprocessing import LabelEncoder
 
-import numpy as np
-
-
-
-from _ext import teams, train_model
+from _ext import teams, prediction
 
 
 # Getting the fixtures of the already predicted teams
 def get_fixtures():
-    start_date = datetime(2023, 4, 28)  
-    end_date = datetime(2023, 4, 30)    
-    delta = timedelta(days=1)
-
-    match_fix = []
-    compiled_for = set()
-    compiled_against = set()
-    compiled_any = set()
-    while start_date <= end_date:
-        date_str = start_date.strftime('%d-%B-%Y')
-        url = f'https://www.skysports.com/football/fixtures-results/{date_str}'
-        response = requests.get(url)
-
-        soup = BeautifulSoup(response.content, 'html.parser')
-        fixtures = soup.find_all('div', class_='fixres__item')
-        for fixture in fixtures:
-            league = fixture.find_previous_sibling('h5').text.strip()
-            team1 = fixture.find('span', class_='swap-text__target').text.strip()
-            team2 = fixture.find_all('span', class_='swap-text__target')[1].text.strip()
-            time = fixture.find('span', class_='matches__date').text.strip()
-            match_fix.append(f'{team1} vs {team2}')
+    try:
+        for_team, against_team, any_win = prediction()
+        start_date = datetime.today() + timedelta(days=2)
+        end_date = start_date + timedelta(days=7)
+        delta = timedelta(days=1)
+        match_fix = []
+        compiled_for = set()
+        compiled_against = set()
+        compiled_any = set()
         
-        start_date += delta
+        while start_date <= end_date:
+            date_str = start_date.strftime('%d-%B-%Y')
+            url = f'https://www.skysports.com/football/fixtures-results/{date_str}'
+            response = requests.get(url)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            fixtures = soup.find_all('div', class_='fixres__item')
+            for fixture in fixtures:
+                league = fixture.find_previous_sibling('h5').text.strip()
+                team_1 = fixture.find('span', class_='swap-text__target').text.strip()
+                team_2 = fixture.find_all('span', class_='swap-text__target')[1].text.strip()
+                time = fixture.find('span', class_='matches__date').text.strip()
+                match_fix.append(f'{team_1} vs {team_2}')
+            
+            start_date += delta
+            
+            selection_set = set(line.strip() for line in for_team)
+            for selection in selection_set:
+                for item in match_fix:
+                    if selection in item:
+                        compiled_for.add(item)
+                    
+            selection_set = set(line.strip() for line in against_team)
+            for selection in selection_set:
+                for item in match_fix:
+                    if selection in item:
+                        compiled_against.add(item)
+
+            selection_set = set(line.strip() for line in any_win)
+            for selection in selection_set:
+                for item in match_fix:
+                    if selection in item:
+                        compiled_any.add(item)
         
-        with open('for_selections.txt', 'r') as f:
-            selection_set = set(line.strip() for line in f)
-        for selection in selection_set:
-            for item in match_fix:
-                if selection in item:
-                    compiled_for.add(item)
-                
-        with open('against_selections.txt', 'r') as f:
-            selection_set = set(line.strip() for line in f)
-        for selection in selection_set:
-            for item in match_fix:
-                if selection in item:
-                    compiled_against.add(item)
-
-        with open('any_selections.txt', 'r') as f:
-            selection_set = set(line.strip() for line in f)
-
-        for selection in selection_set:
-            for item in match_fix:
-                if selection in item:
-                    compiled_any.add(item)
-    
-    return compiled_for, compiled_against, compiled_any
+        return compiled_for, compiled_against, compiled_any
+    except Exception as e:
+        print(f"Error: {e}")
+        return None 
 
 
 def arrange_fixture():
-
     # Removing unwanted data and organizing the fixtures into sections
     compiled_for, compiled_against, compiled_any = get_fixtures()
     compiled_for = {match for match in compiled_for if 'Ladies' not in match and 'Women' not in match}
@@ -75,17 +66,18 @@ def arrange_fixture():
 
     return compiled_for, compiled_against, compiled_any
 
-
-
-def comparison():
+def my_pick():
     compiled_for, compiled_against, compiled_any = arrange_fixture() # Cleaned Fixtures
     for_team, against_team, any_win, data = teams() # league tables
-
+    
     compiled_for = [[s.strip() for s in item.split('vs')] for item in compiled_for]
     compiled_against = [[s.strip() for s in item.split('vs')] for item in compiled_against]
     compiled_any = [[s.strip() for s in item.split('vs')] for item in compiled_any]
 
     comp_ = []
+    _comp = []
+    pick_for = []
+    pick_against = []
 
     for pair in compiled_against:
         sublist = []
@@ -95,62 +87,34 @@ def comparison():
                     sublist.extend(row)
         if len(sublist) == 26:
             comp_.append(sublist)
-        else:
-            print(f"Skipping pair {pair} because sublist has length {len(sublist)}")
-
-    # Convert the list of stats to a pandas DataFrame
-    df = pd.DataFrame(comp_, columns=["Team", "Played", "Won", "Drawn", "Lost", "GF", "GA", "GD", "Points", 
-                                     "Last_5_W", "Last_5_D", "Last_5_L","Team_Form", "Away_Team", "Played", "Won", "Drawn", "Lost", "GF", "GA", "GD", "Points", 
-                                     "Last_5_W", "Last_5_D", "Last_5_L","Team_Form"])
+       
+    for pair in compiled_for:
+        sublist = []
+        for item in pair:
+            for row in data:
+                if item in row:
+                    sublist.extend(row)
+        if len(sublist) == 26:
+            _comp.append(sublist)
     
-    #df = pd.get_dummies(df, columns=["Team"])
+    for i, j in zip(comp_, compiled_against):
+        if i[0] in j and i[-1] >= 3 and i[15] >= 14:
+            pick_against.append(i[0])
+        elif i[13] in j and i[12] >= 3 and i[2] >= 14: 
+            pick_against.append(i[13])
+    for i, j in zip(_comp, compiled_for):
+        if i[0] in j and i[-1] <= -2 and i[15] <= 13:
+            pick_for.append(i[0])
+        elif i[13] in j and i[12] <= -2 and i[2] <= 13:
+            pick_for.append(i[13])
     
-    # Encoding the labels
+    return pick_for, pick_against
 
-    le = LabelEncoder()
-    unique_labels = set(df["Team"]) | set(df["Away_Team"])
-    le.fit(list(unique_labels))
 
-    
-    y = df["Team_Form"]
 
-    X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
+if __name__ == "__main__":
+    pick_for, pick_against = my_pick()
+    print(pick_for)
+    print(pick_against)
 
-    # Encoding the features
-    X_train["Team"] = X_train["Team"].apply(lambda x: le.transform([x])[0] if x in unique_labels else -1)
-    X_train["Away_Team"] = X_train["Away_Team"].apply(lambda x: le.transform([x])[0] if x in unique_labels else -1)
-
-    X_test["Team"] = X_test["Team"].apply(lambda x: le.transform([x])[0] if x in unique_labels else -1)
-    X_test["Away_Team"] = X_test["Away_Team"].apply(lambda x: le.transform([x])[0] if x in unique_labels else -1)
-
-    print(X_train)
-    rfc = RandomForestClassifier()
-    rfc.fit(X_train, y_train)
-
-  
-
-     # Converting each string value to a unique integer value
-    le = LabelEncoder()
-    for i in range(len(compiled_against)):
-        for j in range(len(compiled_against[i])):
-            compiled_against[i][j] = le.fit_transform([compiled_against[i][j]])[0]
-
-    # Converting comp_ to a numpy array
-    compiled_against = np.array(compiled_against)
-
-    # Making predictions using the trained model
-    predictions = rfc.predict(comp_)
-    print(predictions)
-
-    for i in range(len(compiled_against)):
-        team1, team2 = le.inverse_transform(compiled_against[i][0]), le.inverse_transform(compiled_against[i][1])
-        outcome = "Win" if np.any(predictions[i] == 2) else "Loss"
-        print(f"{team1} vs {team2}: {outcome}")
         
-    return 
-
-
-
-
-print(comparison())
-

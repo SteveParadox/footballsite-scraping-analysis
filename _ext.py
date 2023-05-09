@@ -41,7 +41,6 @@ def teams():
         for table in tables:
             # Extracting the league name from the table header
             league_name = table.find('caption').text.strip()
-            # Extracting the table rows from the body
             rows = table.find('tbody').find_all('tr')
             last_five_results = []
             for row in rows:
@@ -97,13 +96,13 @@ def teams():
                         data.append([name, played, won, drawn, lost, gf, ga, gd, points,
                                  last_five_record[0], last_five_record[1], last_five_record[2], team_form,
                                  ])
-                        if lost < 6:
+                        if lost < 7:
                             for_team.append(name)
                             # Adding the last five records as features for the team
                             if last_five_record_str:
                                 feature_name = name.lower().replace(' ', '_') + '_last_5_record'
                                 globals()[feature_name] = last_five_record_str 
-                        elif lost > 17 or won < 6:
+                        elif lost > 15 or won < 7:
                             against_team.append(name)
                             if last_five_record_str:
                                 feature_name = name.lower().replace(' ', '_') + '_last_5_record'
@@ -112,17 +111,16 @@ def teams():
                             any_win.append(name)
                     v.append(last_five_record_str)
                 else:
-                    print("League is still young")
+                    print("League is still young .......... ")
 
     return for_team, against_team, any_win, data
 
-# ---------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------
 
 def models():
     for_team, against_team, any_win, data = teams()
-
     data = []  
-    # Adding the data for each team to the list
+    # Add the data for each team to the list
     for url in urls:
         response = requests.get(url)
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -172,8 +170,9 @@ def models():
 
     df = pd.DataFrame(data, columns=["Team", "Played", "Won", "Drawn", "Lost", "GF", "GA", "GD", "Points", 
                                      "Last_5_W", "Last_5_D", "Last_5_L","Team_Form", "Outcome"])
+                                
     # -----------------------------------------------------------------------------------------------------
-    df = df.query('Team_Form > 3 or Team_Form < -1')
+    df = df.query('Team_Form >= 3 or Team_Form <= -2')
 
     # Encoding the labels
     le = LabelEncoder()
@@ -195,7 +194,7 @@ def models():
 def train_model():
     try:
         X_train, X_test, y_train, y_test, le = models()
-        # Initializing the model
+        # Initialize the model
         rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
 
         # Fitting the model to the training data
@@ -221,52 +220,42 @@ def train_model():
 # ----------------------------------------------------------------------
 
 def prediction():
-    # Training the model
-    X_train, X_test, y_train, y_test, le = models()
-    rf_model = train_model()
-    # Getting feature importances
-    importances = rf_model.feature_importances_
+    try:
+    # Train the model
+        X_train, X_test, y_train, y_test, le = models()
+        rf_model = train_model()
 
-    features = X_train.columns
+        # Getting feature importances
+        importances = rf_model.feature_importances_
+        features = X_train.columns
 
-    # Finding the indices of the most important features
-    indices = np.argsort(importances)[::-1]
+        # Finding the indices of the most important features
+        indices = np.argsort(importances)[::-1]
 
-    # Printing the most important features
-    print("Feature ranking:")
-    for f in range(X_train.shape[1]):
-        print(f"{f+1}. {features[indices[f]]} ({importances[indices[f]]})")
+        # Getting predictions for all the data
+        all_data = pd.concat([X_train, X_test])
+        all_predictions = rf_model.predict(all_data)
+        all_outcome = pd.concat([y_train, y_test])
 
-    # Getting predictions for all the data
-    all_data = pd.concat([X_train, X_test])
-    all_predictions = rf_model.predict(all_data)
-    all_outcome = pd.concat([y_train, y_test])
+        # Getting the team names and outcomes
+        team_names = le.inverse_transform(all_data["Team"])
+        outcomes =  le.inverse_transform(all_outcome)
+        predictions = le.inverse_transform(all_predictions)
 
-    # Getting the team names and outcomes
-    team_names = le.inverse_transform(all_data["Team"])
-    outcomes =  le.inverse_transform(all_outcome)
-    predictions = le.inverse_transform(all_predictions)
+        # Creating a dataframe with team names and their predicted outcomes
+        team_predictions = pd.DataFrame({"Team": team_names, "Outcome": outcomes, "Prediction": predictions})
+        
+        # Printing the teams to be considered as favorites
+        for_team = team_predictions[le.transform(team_predictions["Prediction"]) == 1]["Team"].values
 
-    # Creating a dataframe with team names and their predicted outcomes
-    team_predictions = pd.DataFrame({"Team": team_names, "Outcome": outcomes, "Prediction": predictions})
-       
-    # Printing the teams to be considered as favorites
-    for_team = team_predictions[le.transform(team_predictions["Prediction"]) == 1]["Team"].values
+        # Printing the teams with poor form
+        against_team = team_predictions[le.transform(team_predictions["Prediction"]) == 0]["Team"].values
 
-    # Printing the teams with poor form
-    against_team = team_predictions[le.transform(team_predictions["Prediction"]) == 0]["Team"].values
-
-    # Printing the teams that can potentially win any match
-    any_win = team_predictions[le.transform(team_predictions["Prediction"]) == 2]["Team"].values
-
-    with open('for_selections.txt', 'w') as f:
-        for team in for_team:
-            f.write(team + '\n')
-    with open('against_selections.txt', 'w') as f:
-        for team in against_team:
-            f.write(team + '\n')
-    with open('any_selections.txt', 'w') as f:
-        for team in any_win:
-            f.write(team + '\n')
-
-    return for_team, against_team, any_win
+        # Printing the teams that can potentially win any match
+        any_win = team_predictions[le.transform(team_predictions["Prediction"]) == 2]["Team"].values
+    
+        return for_team, against_team, any_win
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
