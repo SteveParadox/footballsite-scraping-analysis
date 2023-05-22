@@ -10,6 +10,8 @@ from sklearn.metrics import log_loss
 import numpy as np
 import time
 
+from urldata import urls
+
 start = time.time()
 
 
